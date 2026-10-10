@@ -10,7 +10,7 @@ try:  # optional at import time so tests can run without python-dotenv
 except ImportError:
     pass
 
-MODEL = "gemini/gemini-2.0-flash"
+DEFAULT_MODEL = "gemini/gemini-2.0-flash"
 MOCK_BASE_URL = "http://127.0.0.1:8766/v1"
 
 
@@ -19,16 +19,15 @@ def get_api_key() -> str | None:
     return os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
 
 
-def resolve_llm(mock: bool = False):
+def resolve_llm(mock: bool = False, model: str | None = None):
     """Return a CrewAI LLM.
 
     - mock=True points CrewAI at the bundled OpenAI-compatible mock server so the
       full pipeline runs offline (demo/tests, no key needed).
-    - otherwise requires GOOGLE_API_KEY / GEMINI_API_KEY and uses Gemini 2.0 Flash.
+    - otherwise requires GOOGLE_API_KEY / GEMINI_API_KEY and uses configured Gemini model.
     """
-    from crewai import LLM
-
     if mock:
+        from crewai import LLM
         return LLM(model="openai/gpt-4o-mini", base_url=MOCK_BASE_URL,
                    api_key="mock", temperature=0.7)
     key = get_api_key()
@@ -38,4 +37,6 @@ def resolve_llm(mock: bool = False):
             "environment or in a .env file - get one free at "
             "https://aistudio.google.com/apikey - or run with --mock for the offline demo."
         )
-    return LLM(model=MODEL, api_key=key, temperature=0.7)
+    from crewai import LLM
+    target_model = model or os.getenv("CREWAI_MODEL", DEFAULT_MODEL)
+    return LLM(model=target_model, api_key=key, temperature=0.7)

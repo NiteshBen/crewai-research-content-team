@@ -25,13 +25,18 @@ def build_crew(topic: str, llm):
     )
 
 
-def run(topic: str, mock: bool = False, out_dir: str | Path = "output") -> Path:
+def run(topic: str, mock: bool = False, out_dir: str | Path = "output",
+        model: str | None = None) -> Path:
     """Research + write a blog post about `topic`; returns the written file path.
 
     mock=True runs the whole pipeline against the bundled OpenAI-compatible
     mock server (offline demo, no API key required).
     """
-    llm = resolve_llm(mock=mock)
-    crew = build_crew(topic, llm)
+    clean_topic = (topic or "").strip()
+    if not clean_topic:
+        raise ValueError("Topic cannot be empty")
+
+    llm = resolve_llm(mock=mock, model=model)
+    crew = build_crew(clean_topic, llm)
     result = crew.kickoff()
-    return write_post(topic, str(result.raw), out_dir)
+    return write_post(clean_topic, str(result.raw), out_dir, mock=mock)

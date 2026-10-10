@@ -11,72 +11,75 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 import threading
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOST, PORT = "127.0.0.1", 8766
 
-RESEARCH = """## Research brief
 
-### Theme 1: Small, efficient models are eating the frontier
-Recent releases show a clear shift toward smaller models distilled from frontier systems,
-delivering 80-90% of the quality at a fraction of the cost and latency.
+def _extract_topic(messages: list[dict]) -> str:
+    raw = json.dumps(messages)
+    m = re.search(r"trends of ['\"]([^'\"]+)['\"]", raw, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"blog post about ['\"]([^'\"]+)['\"]", raw, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    return "the Requested Topic"
 
-### Theme 2: Agents move from demos to workflows
-Multi-agent systems are being productized for research, coding, and content workflows, with
-orchestration frameworks (CrewAI, LangGraph) reaching production maturity.
 
-### Theme 3: On-device and edge inference
-Phones and laptops now ship NPUs capable of running 3-7B parameter models locally, enabling
-private, offline AI features.
+def _get_research_brief(topic: str) -> str:
+    return f"""## Research brief: {topic}
 
-### Theme 4: Regulation and provenance
-Jurisdictions are moving toward labeling AI-generated content and auditing high-risk systems.
+### Theme 1: Emerging Breakthroughs in {topic}
+Recent developments show accelerating innovation in {topic}, delivering higher efficiency and quality across foundational workflows.
+
+### Theme 2: Production Adoption and Scaling
+Organizations are transitioning from isolated prototypes to production architectures, with enterprise frameworks maturing rapidly.
+
+### Theme 3: Practical Implementation and Performance
+Practical deployments emphasize lower latency, higher security, and cost effectiveness.
+
+### Theme 4: Standards and Best Practices
+Industry practitioners are establishing benchmarks, compliance safeguards, and quality assurance workflows.
 
 ### Open questions
-- How quickly will distilled models close the remaining quality gap?
-- Which agent orchestration patterns become standard practice?
-- Will on-device models change data-privacy expectations faster than regulation can respond?
+- How will next-generation tooling address remaining integration bottlenecks in {topic}?
+- Which deployment architectures will emerge as the standard across the industry?
 """
 
-BLOG = """# The Quiet Revolution: How AI Got Smaller, Faster, and Closer
 
-While headlines chased ever-bigger models, something more interesting happened in the
-background: AI got small enough to live next to you. Here is what that shift looks like.
+def _get_blog_post(topic: str) -> str:
+    return f"""# Navigating {topic}: A Comprehensive Strategic Overview
 
-## Small models, big consequence
-Distilled models now deliver most of the frontier quality at a fraction of the cost. For
-teams building products, that changes the math: features that were uneconomical last year
-fit this year's budget.
+As innovation accelerates, {topic} is rapidly shifting from emerging concept to essential capability. Here is an analysis of what is driving this transition and where the field is heading.
 
-## Agents grow up
-Multi-agent pipelines have graduated from impressive demos to dependable workflows -
-research, coding assistance, content generation. The frameworks that orchestrate them are
-stabilizing into real engineering choices rather than experiments.
+## The Core Shift
+Recent advancements in {topic} demonstrate a significant leap forward in capabilities, making previously complex tasks reliable and cost-effective.
 
-## AI moves into your pocket
-With modern NPUs, phones and laptops run capable models locally. Privacy improves, latency
-drops, and features keep working on a plane.
+## From Experiments to Production
+Teams are no longer treating {topic} as a novelty. Production architectures are standardizing around reliable pipelines and verifiable benchmarks.
 
-## The rules catch up
-Regulators are converging on provenance labeling and audits for high-risk uses. Teams that
-build provenance in early will move faster than teams that retrofit it.
+## Practical Advantages
+Deployments in {topic} consistently show measurable improvements in turnaround time, resource efficiency, and user experience.
 
 ## What this means for you
-1. Prototype with frontier models, ship with distilled ones - the cost curve is on your side.
-2. Treat agent frameworks as infrastructure: pick one, learn it deeply, automate one real workflow.
-3. Design for on-device early: local inference is becoming a product expectation, not a party trick.
+1. Assess your readiness: Review your existing technical stack to identify where {topic} yields the highest immediate leverage.
+2. Standardize workflows: Build modular, repeatable processes rather than ad-hoc experiments.
+3. Focus on verification: Establish clear evaluation metrics to continuously measure impact.
 """
 
 
 def _canned_response(messages: list[dict]) -> str:
     text = json.dumps(messages).lower()
-    # the research task runs first; the writing task references the research context
+    topic = _extract_topic(messages)
+    # The research task runs first; the writing task references the research context
     if "research brief" in text and "blog post" not in text:
-        return RESEARCH
+        return _get_research_brief(topic)
     if any(k in text for k in ("blog post", "publishable", "title")):
-        return BLOG
+        return _get_blog_post(topic)
     return "Understood."
 
 
@@ -94,7 +97,7 @@ class MockLLMHandler(BaseHTTPRequestHandler):
                          "message": {"role": "assistant", "content": content},
                          "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 1, "completion_tokens": len(re.findall(r"\w+", content)),
-                      "total_tokens": 2},
+                       "total_tokens": 2},
         }
         data = json.dumps(resp).encode()
         self.send_response(200)
@@ -107,7 +110,18 @@ class MockLLMHandler(BaseHTTPRequestHandler):
         pass
 
 
-def start_server(host: str = HOST, port: int = PORT) -> ThreadingHTTPServer:
+def is_server_running(host: str = HOST, port: int = PORT) -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            return s.connect_ex((host, port)) == 0
+    except OSError:
+        return False
+
+
+def start_server(host: str = HOST, port: int = PORT) -> ThreadingHTTPServer | None:
+    if is_server_running(host, port):
+        return None
     server = ThreadingHTTPServer((host, port), MockLLMHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
@@ -115,4 +129,8 @@ def start_server(host: str = HOST, port: int = PORT) -> ThreadingHTTPServer:
 
 if __name__ == "__main__":
     print(f"mock LLM server on http://{HOST}:{PORT}/v1/chat/completions (Ctrl+C to stop)")
-    start_server().serve_forever()
+    server = start_server()
+    if server:
+        server.serve_forever()
+    else:
+        print("Server is already running.")

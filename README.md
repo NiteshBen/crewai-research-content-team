@@ -23,7 +23,7 @@ implementation of the "AI Multi-Agent System for Research and Content Generation
   subheaded sections, practical takeaways), adding nothing the brief doesn't support.
 - Tasks run sequentially; the researcher's output is passed to the writer as context.
 - The final post is saved as dated markdown with topic/date front matter and a
-  provenance banner.
+  dynamic provenance banner distinguishing real Gemini vs offline mock runs.
 
 ## Quick start (real run, Google Gemini)
 
@@ -34,6 +34,16 @@ python main.py "Generative AI trends in 2026"
 ```
 
 Requires Python 3.10-3.13 (CrewAI's supported range).
+
+### Model Selection
+
+By default, the pipeline uses `gemini/gemini-2.0-flash`. You can override the model via CLI or environment variable:
+
+```bash
+python main.py "AI in Healthcare" --model gemini/gemini-2.5-flash
+# Or:
+export CREWAI_MODEL="gemini/gemini-2.5-flash"
+```
 
 ## Offline demo - no API key needed
 
@@ -46,8 +56,7 @@ python main.py "Generative AI trends in 2026" --mock
 ```
 
 `sample_output/2026-10-07-generative-ai-trends-in-2026.md` was produced exactly this way -
-the mock's banner marks it clearly as mock-generated, so sample content is never confused
-with a real Gemini run.
+the mock's banner marks it clearly as mock-generated (`provider: offline-mock-llm`), so sample content is never confused with a real Gemini run.
 
 ## Design decisions worth stealing
 
@@ -55,9 +64,7 @@ with a real Gemini run.
   researcher must separate established facts from speculation and cannot invent sources.
 - **The writer is constrained to the brief** ("do not add claims the brief does not
   support"), which keeps the two-step pipeline honest instead of letting the LLM freestyle.
-- **Provenance is automatic**: every output file carries the pipeline that made it and
-  whether the content came from Gemini or the mock - important when sample outputs live
-  in the repo.
+- **Dynamic provenance tracking**: every output file records the exact provider and pipeline that generated it (`google-gemini` vs `offline-mock-llm`).
 - **Mock mode doubles as a test fixture**: the same server that powers `--mock` lets the
   test suite exercise the real CrewAI objects without network or keys.
 
@@ -65,15 +72,23 @@ with a real Gemini run.
 
 ```
 research_team/
-  config.py    # Gemini key loading, LLM resolution (real or mock)
+  config.py    # Gemini key loading, LLM resolution (real or mock), model override
   agents.py    # Researcher + Writer definitions
   tasks.py     # research_task + writing_task (topic interpolated)
-  crew.py      # Crew assembly + run()
-  output.py    # slugify + dated markdown with front matter
-mock_llm_server.py  # stdlib OpenAI-compatible mock LLM
-main.py             # CLI: topic [--mock] [--out DIR]
-tests/              # pytest: output format, slug rules, key handling
+  crew.py      # Crew assembly + run() + topic validation
+  output.py    # slugify + dated markdown with front matter and dynamic provenance
+mock_llm_server.py  # stdlib OpenAI-compatible mock LLM with socket collision safety
+main.py             # CLI: topic [--mock] [--out DIR] [--model MODEL]
+tests/              # pytest: output format, slug rules, key handling, mock extraction
 ```
+
+## Testing
+
+```bash
+py -m pytest -v
+```
+
+6 tests covering slug generation, dated markdown creation, dynamic provenance banners (real vs mock), API key validation, mock LLM topic extraction, and empty topic handling.
 
 ## License
 
